@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Perma-Patch Cost Savings Calculator</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { margin: 0; padding: 0; }
+        .clip-path-arrow { clip-path: polygon(10% 0%, 90% 0%, 100% 100%, 0% 100%); }
+    </style>
+</head>
+<body class="bg-gradient-to-br from-gray-900 to-gray-800 text-white">
+    <div id="app" class="min-h-screen p-4 md:p-8"></div>
+
+    <script>
+        // Calculator Logic
+        const PermaPatchCalculator = {
+            state: {
+                numPotholes: 10000,
+                laborRate: 70,
+                analysisYears: 4.5,
+                permaPatchPrice: 17.50,
+                bulkPremiumPrice: 220,
+                bulkLocalPrice: 175,
+                baggedColdPrice: 15,
+                waterActivatedPrice: 41
+            },
+
+            init() {
+                this.render();
+                this.attachEventListeners();
+            },
+
+            calculate() {
+                const calcMethod = (method, config) => {
+                    const costPerTon = config.unit.includes('Ton') 
+                        ? config.unitPrice 
+                        : (config.unitPrice / (parseFloat(config.unit.match(/\d+/)[0]) / 2000)) * (100 / config.useable);
+                    
+                    const materialCostPerPothole = costPerTon / 40;
+                    const totalLaborPerDay = config.personnel * config.hours * this.state.laborRate;
+                    const totalTruckPerDay = config.hours * config.truckRate;
+                    const laborCostPerPothole = (totalLaborPerDay + totalTruckPerDay) / config.potholesPerDay;
+                    
+                    const periods = Math.ceil(this.state.analysisYears / 1.5);
+                    let totalRepairs = this.state.numPotholes;
+                    let currentPotholes = this.state.numPotholes;
+                    
+                    for (let i = 1; i <= periods; i++) {
+                        const failures = Math.round(currentPotholes * (config.failure18 / 100));
+                        totalRepairs += failures;
+                        currentPotholes = failures;
+                    }
+                    
+                    return {
+                        method,
+                        totalRepairs,
+                        totalMaterial: totalRepairs * materialCostPerPothole,
+                        totalLabor: totalRepairs * laborCostPerPothole,
+                        totalCost: totalRepairs * (materialCostPerPothole + laborCostPerPothole),
+                        failure18: config.failure18
+                    };
+                };
+
+                const configs = {
+                    permaPatch: { unitPrice: this.state.permaPatchPrice, unit: '60 Lb. Bag', useable: 100, failure18: 18, personnel: 2, hours: 8, potholesPerDay: 60, truckRate: 35 },
+                    bulkPremium: { unitPrice: this.state.bulkPremiumPrice, unit: 'Ton', useable: 90, failure18: 26, personnel: 5, hours: 8, potholesPerDay: 70, truckRate: 100 },
+                    bulkLocal: { unitPrice: this.state.bulkLocalPrice, unit: 'Ton', useable: 85, failure18: 52, personnel: 5, hours: 8, potholesPerDay: 70, truckRate: 100 },
+                    baggedCold: { unitPrice: this.state.baggedColdPrice, unit: '50 Lb. Bag', useable: 90, failure18: 52, personnel: 2, hours: 8, potholesPerDay: 55, truckRate: 35 },
+                    waterActivated: { unitPrice: this.state.waterActivatedPrice, unit: '55 Lb. Bucket', useable: 70, failure18: 18, personnel: 2, hours: 8, potholesPerDay: 50, truckRate: 35 }
+                };
+
+                const results = {
+                    permaPatch: calcMethod('Perma-Patch', configs.permaPatch),
+                    bulkPremium: calcMethod('Bulk Premium', configs.bulkPremium),
+                    bulkLocal: calcMethod('Bulk Local', configs.bulkLocal),
+                    baggedCold: calcMethod('Bagged Cold', configs.baggedCold),
+                    waterActivated: calcMethod('Water Activated', configs.waterActivated)
+                };
+
+                results.savings = {
+                    vsBulkPremium: results.bulkPremium.totalCost - results.permaPatch.totalCost,
+                    vsBulkLocal: results.bulkLocal.totalCost - results.permaPatch.totalCost,
+                    vsBaggedCold: results.baggedCold.totalCost - results.permaPatch.totalCost,
+                    vsWaterActivated: results.waterActivated.totalCost - results.permaPatch.totalCost
+                };
+
+                return results;
+            },
+
+            formatCurrency(value) {
+                return new Intl.NumberFormat('en-US', {
+                    style: 'currency',
+                    currency: 'USD',
+                    minimumFractionDigits: 0,
+                    maximumFractionDigits: 0
+                }).format(value);
+            },
+
+            render() {
+                const results = this.calculate();
+                const app = document.getElementById('app');
+                
+                app.innerHTML = `
+                    <div class="max-w-7xl mx-auto">
+                        <!-- Header -->
+                        <div class="text-center mb-8 md:mb-12">
+                            <div class="inline-block bg-orange-500 text-white px-8 md:px-12 py-4 md:py-6 mb-6 clip-path-arrow">
+                                <h1 class="text-3xl md:text-5xl font-bold">PERMA-PATCH®</h1>
+                                <p class="text-lg md:text-xl mt-2">PERMANENT PAVEMENT REPAIR</p>
+                            </div>
+                            <h2 class="text-2xl md:text-3xl font-bold text-gray-100">Cost Savings Calculator</h2>
+                            <p class="text-gray-400 mt-2 text-sm md:text-base">Interactive tool for municipal and DOT road repair cost analysis</p>
+                        </div>
+
+                        <!-- Input Section -->
+                        <div class="bg-gray-800 rounded-lg p-4 md:p-6 mb-8 border border-gray-700">
+                            <h3 class="text-lg md:text-xl font-bold mb-4 text-orange-500">Your Project Inputs</h3>
+                            <div class="grid md:grid-cols-3 gap-4 md:gap-6">
+                                <div>
+                                    <label class="block text-sm font-medium mb-2">Starting Number of Potholes</label>
+                                    <input type="number" id="numPotholes" value="${this.state.numPotholes}" 
+                                           class="w-full bg-gray-700 border border-gray-600 rounded px-4 py-2 text-white" min="1">
+                                </div>
+                                <div>
+                                    <label class="block text-sm font-medium mb-2">Labor Rate ($/hour)</label>
+                                    <input type="number" id="laborRate" value="${this.state.laborRate}" 
+                                           class="w-full bg-gray-700 border border-gray-600 rounded px-4 py-2 text-white" min="0" step="5">
+                                </div>
+                                <div>
+                                    <label class="block text-sm font-medium mb-2">Analysis Period (years)</label>
+                                    <input type="number" id="analysisYears" value="${this.state.analysisYears}" 
+                                           class="w-full bg-gray-700 border border-gray-600 rounded px-4 py-2 text-white" min="1" max="10" step="0.5">
+                                </div>
+                            </div>
+
+                            <details class="mt-6">
+                                <summary class="cursor-pointer text-orange-500 font-medium">Advanced: Product Pricing (click to expand)</summary>
+                                <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4 mt-4">
+                                    <div>
+                                        <label class="block text-xs font-medium mb-1">Perma-Patch ($/bag)</label>
+                                        <input type="number" id="permaPatchPrice" value="${this.state.permaPatchPrice}" 
+                                               class="w-full bg-gray-700 border border-gray-600 rounded px-3 py-1 text-white text-sm" step="0.50">
+                                    </div>
+                                    <div>
+                                        <label class="block text-xs font-medium mb-1">Bulk Premium ($/ton)</label>
+                                        <input type="number" id="bulkPremiumPrice" value="${this.state.bulkPremiumPrice}" 
+                                               class="w-full bg-gray-700 border border-gray-600 rounded px-3 py-1 text-white text-sm" step="10">
+                                    </div>
+                                    <div>
+                                        <label class="block text-xs font-medium mb-1">Bulk Local ($/ton)</label>
+                                        <input type="number" id="bulkLocalPrice" value="${this.state.bulkLocalPrice}" 
+                                               class="w-full bg-gray-700 border border-gray-600 rounded px-3 py-1 text-white text-sm" step="10">
+                                    </div>
+                                    <div>
+                                        <label class="block text-xs font-medium mb-1">Bagged Cold ($/bag)</label>
+                                        <input type="number" id="baggedColdPrice" value="${this.state.baggedColdPrice}" 
+                                               class="w-full bg-gray-700 border border-gray-600 rounded px-3 py-1 text-white text-sm" step="0.50">
+                                    </div>
+                                    <div>
+                                        <label class="block text-xs font-medium mb-1">Water Activated ($/bucket)</label>
+                                        <input type="number" id="waterActivatedPrice" value="${this.state.waterActivatedPrice}" 
+                                               class="w-full bg-gray-700 border border-gray-600 rounded px-3 py-1 text-white text-sm" step="1">
+                                    </div>
+                                </div>
+                            </details>
+                        </div>
+
+                        <!-- Results Table -->
+                        <div class="bg-gray-800 rounded-lg overflow-hidden border border-gray-700 mb-8">
+                            <div class="overflow-x-auto">
+                                <table class="w-full text-sm md:text-base">
+                                    <thead class="bg-orange-500">
+                                        <tr>
+                                            <th class="px-2 md:px-4 py-3 text-left">Repair Method</th>
+                                            <th class="px-2 md:px-4 py-3 text-center">18-Mo Fail %</th>
+                                            <th class="px-2 md:px-4 py-3 text-center">Total Repairs</th>
+                                            <th class="px-2 md:px-4 py-3 text-right">Material</th>
+                                            <th class="px-2 md:px-4 py-3 text-right">Labor</th>
+                                            <th class="px-2 md:px-4 py-3 text-right">Total Cost</th>
+                                            <th class="px-2 md:px-4 py-3 text-right bg-red-600">Wasted $</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <tr class="bg-orange-500 font-bold">
+                                            <td class="px-2 md:px-4 py-3">Perma-Patch</td>
+                                            <td class="px-2 md:px-4 py-3 text-center">${results.permaPatch.failure18}%</td>
+                                            <td class="px-2 md:px-4 py-3 text-center">${results.permaPatch.totalRepairs.toLocaleString()}</td>
+                                            <td class="px-2 md:px-4 py-3 text-right">${this.formatCurrency(results.permaPatch.totalMaterial)}</td>
+                                            <td class="px-2 md:px-4 py-3 text-right">${this.formatCurrency(results.permaPatch.totalLabor)}</td>
+                                            <td class="px-2 md:px-4 py-3 text-right">${this.formatCurrency(results.permaPatch.totalCost)}</td>
+                                            <td class="px-2 md:px-4 py-3 text-right bg-red-600">—</td>
+                                        </tr>
+                                        <tr class="bg-gray-700">
+                                            <td class="px-2 md:px-4 py-3">Bulk Premium</td>
+                                            <td class="px-2 md:px-4 py-3 text-center">${results.bulkPremium.failure18}%</td>
+                                            <td class="px-2 md:px-4 py-3 text-center">${results.bulkPremium.totalRepairs.toLocaleString()}</td>
+                                            <td class="px-2 md:px-4 py-3 text-right">${this.formatCurrency(results.bulkPremium.totalMaterial)}</td>
+                                            <td class="px-2 md:px-4 py-3 text-right">${this.formatCurrency(results.bulkPremium.totalLabor)}</td>
+                                            <td class="px-2 md:px-4 py-3 text-right">${this.formatCurrency(results.bulkPremium.totalCost)}</td>
+                                            <td class="px-2 md:px-4 py-3 text-right bg-red-600 font-bold">${this.formatCurrency(results.savings.vsBulkPremium)}</td>
+                                        </tr>
+                                        <tr class="bg-gray-750">
+                                            <td class="px-2 md:px-4 py-3">Bulk Local</td>
+                                            <td class="px-2 md:px-4 py-3 text-center">${results.bulkLocal.failure18}%</td>
+                                            <td class="px-2 md:px-4 py-3 text-center">${results.bulkLocal.totalRepairs.toLocaleString()}</td>
+                                            <td class="px-2 md:px-4 py-3 text-right">${this.formatCurrency(results.bulkLocal.totalMaterial)}</td>
+                                            <td class="px-2 md:px-4 py-3 text-right">${this.formatCurrency(results.bulkLocal.totalLabor)}</td>
+                                            <td class="px-2 md:px-4 py-3 text-right">${this.formatCurrency(results.bulkLocal.totalCost)}</td>
+                                            <td class="px-2 md:px-4 py-3 text-right bg-red-600 font-bold">${this.formatCurrency(results.savings.vsBulkLocal)}</td>
+                                        </tr>
+                                        <tr class="bg-gray-700">
+                                            <td class="px-2 md:px-4 py-3">Bagged Cold</td>
+                                            <td class="px-2 md:px-4 py-3 text-center">${results.baggedCold.failure18}%</td>
+                                            <td class="px-2 md:px-4 py-3 text-center">${results.baggedCold.totalRepairs.toLocaleString()}</td>
+                                            <td class="px-2 md:px-4 py-3 text-right">${this.formatCurrency(results.baggedCold.totalMaterial)}</td>
+                                            <td class="px-2 md:px-4 py-3 text-right">${this.formatCurrency(results.baggedCold.totalLabor)}</td>
+                                            <td class="px-2 md:px-4 py-3 text-right">${this.formatCurrency(results.baggedCold.totalCost)}</td>
+                                            <td class="px-2 md:px-4 py-3 text-right bg-red-600 font-bold">${this.formatCurrency(results.savings.vsBaggedCold)}</td>
+                                        </tr>
+                                        <tr class="bg-gray-750">
+                                            <td class="px-2 md:px-4 py-3">Water Activated</td>
+                                            <td class="px-2 md:px-4 py-3 text-center">${results.waterActivated.failure18}%</td>
+                                            <td class="px-2 md:px-4 py-3 text-center">${results.waterActivated.totalRepairs.toLocaleString()}</td>
+                                            <td class="px-2 md:px-4 py-3 text-right">${this.formatCurrency(results.waterActivated.totalMaterial)}</td>
+                                            <td class="px-2 md:px-4 py-3 text-right">${this.formatCurrency(results.waterActivated.totalLabor)}</td>
+                                            <td class="px-2 md:px-4 py-3 text-right">${this.formatCurrency(results.waterActivated.totalCost)}</td>
+                                            <td class="px-2 md:px-4 py-3 text-right bg-red-600 font-bold">${this.formatCurrency(results.savings.vsWaterActivated)}</td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                            <div class="bg-gray-900 px-4 py-2 text-xs text-gray-400">
+                                * Based on SHRP-H-358, National Research Council
+                            </div>
+                        </div>
+
+                        <!-- Benefits -->
+                        <div class="bg-gradient-to-r from-orange-500 to-orange-600 rounded-lg p-4 md:p-6 mb-8">
+                            <h3 class="text-xl md:text-2xl font-bold mb-4">Additional Benefits of Using Perma-Patch</h3>
+                            <div class="grid md:grid-cols-2 gap-4 text-sm md:text-base">
+                                <ul class="space-y-2">
+                                    <li class="flex items-start"><span class="mr-2">✓</span>Simple application by light crew</li>
+                                    <li class="flex items-start"><span class="mr-2">✓</span>Less exposure to traffic hazards</li>
+                                    <li class="flex items-start"><span class="mr-2">✓</span>2 Year Shelf Life GUARANTEED</li>
+                                    <li class="flex items-start"><span class="mr-2">✓</span>Easy, Fast Application</li>
+                                </ul>
+                                <ul class="space-y-2">
+                                    <li class="flex items-start"><span class="mr-2">✓</span>Consistent high quality</li>
+                                    <li class="flex items-start"><span class="mr-2">✓</span>No edge cutting required</li>
+                                    <li class="flex items-start"><span class="mr-2">✓</span>Works in water-filled potholes</li>
+                                    <li class="flex items-start"><span class="mr-2">✓</span>Works down to 0° F (-18° C)</li>
+                                </ul>
+                            </div>
+                        </div>
+
+                        <!-- Summary Cards -->
+                        <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+                            <div class="bg-gradient-to-br from-green-600 to-green-700 rounded-lg p-4 md:p-6 text-center">
+                                <div class="text-xl md:text-3xl font-bold mb-2">${this.formatCurrency(results.savings.vsBulkPremium)}</div>
+                                <div class="text-xs md:text-sm">Saved vs Bulk Premium</div>
+                            </div>
+                            <div class="bg-gradient-to-br from-green-600 to-green-700 rounded-lg p-4 md:p-6 text-center">
+                                <div class="text-xl md:text-3xl font-bold mb-2">${this.formatCurrency(results.savings.vsBulkLocal)}</div>
+                                <div class="text-xs md:text-sm">Saved vs Bulk Local</div>
+                            </div>
+                            <div class="bg-gradient-to-br from-green-600 to-green-700 rounded-lg p-4 md:p-6 text-center">
+                                <div class="text-xl md:text-3xl font-bold mb-2">${this.formatCurrency(results.savings.vsBaggedCold)}</div>
+                                <div class="text-xs md:text-sm">Saved vs Bagged Cold</div>
+                            </div>
+                            <div class="bg-gradient-to-br from-green-600 to-green-700 rounded-lg p-4 md:p-6 text-center">
+                                <div class="text-xl md:text-3xl font-bold mb-2">${this.formatCurrency(results.savings.vsWaterActivated)}</div>
+                                <div class="text-xs md:text-sm">Saved vs Water Activated</div>
+                            </div>
+                        </div>
+
+                        <!-- Footer -->
+                        <div class="text-center text-xs md:text-sm text-gray-500">
+                            <p>Use for estimation purposes only. Perma-Patch makes no warranty or guarantee of actual cost savings.</p>
+                        </div>
+                    </div>
+                `;
+            },
+
+            attachEventListeners() {
+                const inputs = ['numPotholes', 'laborRate', 'analysisYears', 'permaPatchPrice', 'bulkPremiumPrice', 'bulkLocalPrice', 'baggedColdPrice', 'waterActivatedPrice'];
+                
+                inputs.forEach(id => {
+                    const element = document.getElementById(id);
+                    if (element) {
+                        element.addEventListener('input', (e) => {
+                            this.state[id] = parseFloat(e.target.value) || 0;
+                            this.render();
+                            this.attachEventListeners();
+                        });
+                    }
+                });
+            }
+        };
+
+        // Initialize calculator when page loads
+        document.addEventListener('DOMContentLoaded', () => {
+            PermaPatchCalculator.init();
+        });
+    </script>
+</body>
+</html>
